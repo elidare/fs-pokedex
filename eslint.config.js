@@ -84,5 +84,13 @@ module.exports = [
       'no-console': 'error',
       'react/prop-types': 0
     }
+  },
+  {  
+    files: ['playwright.config.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node
+      }
+    }
   }
 ]
