@@ -44,14 +44,53 @@ jobs:
         id: final
         run: curl ${{ secrets.RENDER_DEPLOY_HOOK }}
   tag_release:
-      needs: [simple_deployment_pipeline]
-      runs-on: ubuntu-latest
-      if: ${{ needs.simple_deployment_pipeline.outputs.tag_release == 'true' }}
-      steps:
-        - uses: actions/checkout@v6
-        - name: Bump version and push tag
-          uses: anothrNick/github-tag-action@4ed44965e0db8dab2b466a16da04aec3cc312fd8  # Version 1.75.0
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            TAG_PREFIX: v
-            DEFAULT_BUMP: patch
+    needs: [simple_deployment_pipeline]
+    runs-on: ubuntu-latest
+    if: ${{ needs.simple_deployment_pipeline.outputs.tag_release == 'true' }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Bump version and push tag
+        uses: anothrNick/github-tag-action@4ed44965e0db8dab2b466a16da04aec3cc312fd8  # Version 1.75.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_PREFIX: v
+          DEFAULT_BUMP: patch
+
+  notify_success:
+    needs: [simple_deployment_pipeline, tag_release]
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Success Notification to discord
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          status: ${{ job.status }}
+          content: "✅ Deploy success, version `${{ github.event.release.tag_name }}`"
+          title: "Details"
+          description: |
+            **Commit:** : ${{ github.sha }}
+            **Message:** ${{ github.event.head_commit.message }}
+            **Author:** ${{ github.actor }}
+
+  notify_failure:
+    needs: [simple_deployment_pipeline, tag_release]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Failure Notification to discord
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          status: ${{ job.status }}
+          content: "❌ Deploy failed"
+          title: "Details"
+          description: |
+            **Repository:** ${{ github.repository }}
+            **Branch:** ${{ github.ref_name }}
+            **Commit:** : [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            **Message:** ${{ github.event.head_commit.message }}
+            **Author:** ${{ github.actor }}
+            **Workflow:** ${{ github.workflow }}
+            **Job:** ${{ github.job }}
+            **Run**: [View](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
