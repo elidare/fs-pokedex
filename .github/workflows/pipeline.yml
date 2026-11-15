@@ -12,10 +12,8 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  simple_deployment_pipeline:
+  build:
     runs-on: ubuntu-latest
-    outputs:
-      deployment_success: ${{ steps.final.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -27,8 +25,15 @@ jobs:
         run: npm run eslint
       - name: Run npm build
         run: npm run build
-      - name: Run npm test
-        run: npm run test
+
+  test:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps
       - name: Run Playwright tests
@@ -39,15 +44,22 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
+
+  deploy:
+    needs: [test]
+    runs-on: ubuntu-latest
+    outputs:
+      deployment_success: ${{ steps.final.outcome == 'success' }}
+    steps:
       - if: ${{ env.DEPLOY == 'true' }}
         name: Trigger deployment
         id: final
         run: curl ${{ secrets.RENDER_DEPLOY_HOOK }}
 
   tag_release:
-    needs: [simple_deployment_pipeline]
+    needs: [deploy]
     runs-on: ubuntu-latest
-    if: ${{ needs.simple_deployment_pipeline.outputs.deployment_success == 'true' }}
+    if: ${{ needs.deploy.outputs.deployment_success == 'true' }}
     outputs:
       new_tag: ${{ steps.create_tag.outputs.new_tag }}
     steps:
@@ -61,8 +73,8 @@ jobs:
           DEFAULT_BUMP: patch
 
   notify_success:
-    needs: [simple_deployment_pipeline, tag_release]
-    if: ${{ success() }}
+    needs: [deploy, tag_release]
+    if: ${{ always() && needs.deploy.result == 'success' && needs.tag_release.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Success Notification to discord
@@ -79,8 +91,8 @@ jobs:
             **Author:** ${{ github.actor }}
 
   notify_failure:
-    needs: [simple_deployment_pipeline, tag_release]
-    if: ${{ always() && (needs.simple_deployment_pipeline.result == 'failure' || needs.tag_release.result == 'failure') }}
+    needs: [deploy, tag_release]
+    if: ${{ always() && (needs.deploy.result == 'failure' || needs.tag_release.result == 'failure') }}
     runs-on: ubuntu-latest
     steps:
       - name: Failure notification to discord
@@ -97,7 +109,7 @@ jobs:
             **Message:** ${{ github.event.head_commit.message }}
             **Author:** ${{ github.actor }}
 
-            **Deployment:** ${{ needs.simple_deployment_pipeline.result }}
+            **Deployment:** ${{ needs.deploy.result }}
             **Tag release:** ${{ needs.tag_release.result }}
             **Workflow:** ${{ github.workflow }}
             **Job:** ${{ github.job }}
