@@ -15,7 +15,7 @@ jobs:
   simple_deployment_pipeline:
     runs-on: ubuntu-latest
     outputs:
-      tag_release: ${{ steps.final.outcome == 'success' }}
+      deployment_success: ${{ steps.final.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -33,7 +33,7 @@ jobs:
         run: npx playwright install --with-deps
       - name: Run Playwright tests
         run: npm run test:e2e
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
           name: playwright-report
@@ -43,13 +43,17 @@ jobs:
         name: Trigger deployment
         id: final
         run: curl ${{ secrets.RENDER_DEPLOY_HOOK }}
+
   tag_release:
     needs: [simple_deployment_pipeline]
     runs-on: ubuntu-latest
-    if: ${{ needs.simple_deployment_pipeline.outputs.tag_release == 'true' }}
+    if: ${{ needs.simple_deployment_pipeline.outputs.deployment_success == 'true' }}
+    outputs:
+      new_tag: ${{ steps.create_tag.outputs.new_tag }}
     steps:
       - uses: actions/checkout@v6
       - name: Bump version and push tag
+        id: create_tag
         uses: anothrNick/github-tag-action@4ed44965e0db8dab2b466a16da04aec3cc312fd8  # Version 1.75.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -65,8 +69,9 @@ jobs:
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          nodetail: true
           status: ${{ job.status }}
-          content: "✅ Deploy success, version `${{ github.event.release.tag_name }}`"
+          content: "✅ Deploy success, version `${{ needs.tag_release.outputs.new_tag }}`"
           title: "Details"
           description: |
             **Commit:** : ${{ github.sha }}
