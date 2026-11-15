@@ -80,14 +80,14 @@ jobs:
 
   notify_failure:
     needs: [simple_deployment_pipeline, tag_release]
-    if: ${{ failure() }}
+    if: ${{ always() && (needs.simple_deployment_pipeline.result == 'failure' || needs.tag_release.result == 'failure') }}
     runs-on: ubuntu-latest
     steps:
-      - name: Failure Notification to discord
+      - name: Failure notification to discord
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
-          status: ${{ job.status }}
+          status: failure
           content: "❌ Deploy failed"
           title: "Details"
           description: |
@@ -96,6 +96,9 @@ jobs:
             **Commit:** : [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
             **Message:** ${{ github.event.head_commit.message }}
             **Author:** ${{ github.actor }}
+
+            **Deployment:** ${{ needs.simple_deployment_pipeline.result }}
+            **Tag release:** ${{ needs.tag_release.result }}
             **Workflow:** ${{ github.workflow }}
             **Job:** ${{ github.job }}
             **Run**: [View](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
